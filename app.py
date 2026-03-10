@@ -2,37 +2,36 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import date
-import json
 
 # --- ページの設定 ---
 st.set_page_config(page_title="現状確認ダッシュボード", layout="wide")
 st.title("📌 現状確認ダッシュボード")
 
-# --- 設定情報を直接コードに書く（Secretsを使わない方法） ---
-# お手元のJSONファイルの中身を、下のシングルクォート (''' ''') の間に貼り付けてください
-json_data = '''
-{
-  "type": "service_account",
-  "project_id": "norse-augury-489809-k8",
-  "private_key_id": "8fedf2ed6623fccc1a256e30d809b71b45ec7f8c",
-  "private_key": "-----BEGIN PRIVATE KEY-----\n（ここに長い秘密鍵が続きます）\n-----END PRIVATE KEY-----\n",
-  "client_email": "viewer@norse-augury-489809-k8.iam.gserviceaccount.com",
-  "client_id": "101378109863753583492",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/viewer%40norse-augury-489809-k8.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
+# --- 設定情報を直接コードに書く（辞書版：エラーが最も出にくい方法） ---
+# お手元のJSONファイルを見ながら、各項目の " " の中身を書き換えてください
+creds = {
+    "type": "service_account",
+    "project_id": "norse-augury-489809-k8",
+    "private_key_id": "8fedf2ed6623fccc1a256e30d809b71b45ec7f8c",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n（★ここにあなたの長い秘密鍵を貼り付け★）\n-----END PRIVATE KEY-----\n",
+    "client_email": "viewer@norse-augury-489809-k8.iam.gserviceaccount.com",
+    "client_id": "101378109863753583492",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/viewer%40norse-augury-489809-k8.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
 }
-'''
 
-# 接続に使用するURL（あなたのスプレッドシートURL）
+# あなたのスプレッドシートURL
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1xS3x9SO5Ev7KZOu-UU6RRx5OGldDWbI_rmcAQjXAHCY/edit"
 
 # --- 接続処理 ---
 @st.cache_resource
 def get_connection():
-    creds = json.loads(json_data)
+    # 秘密鍵の中の \n を本物の改行に直す
+    if "private_key" in creds:
+        creds["private_key"] = creds["private_key"].replace("\\n", "\n").strip()
     return GSheetsConnection(connection_name="gsheets", service_account_info=creds)
 
 conn = get_connection()
@@ -42,7 +41,9 @@ GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
 def load_data(genre):
     try:
         return conn.read(spreadsheet=SPREADSHEET_URL, worksheet=genre)
-    except:
+    except Exception as e:
+        # 万が一エラーが出た場合、画面に原因を表示する
+        st.sidebar.error(f"読み込み失敗 ({genre}): {e}")
         return pd.DataFrame({
             "進捗": [False], "優先度": ["中"], "プロジェクト": ["新規"],
             "タスク": ["内容を入力"], "期日": [str(date.today())], "関連リンク": [""], "備考": [""]
