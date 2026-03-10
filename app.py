@@ -7,31 +7,51 @@ from datetime import date
 st.set_page_config(page_title="現状確認ダッシュボード", layout="wide")
 st.title("📌 現状確認ダッシュボード")
 
-# 【重要】余計な引数を一切渡さず、Streamlitの自動読み込み機能に任せる
-# Secretsの [connections.gsheets] という項目を勝手に見つけてくれます
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- 秘密鍵の自動お掃除・接続設定 ---
+def get_cleaned_connection():
+    # Secretsから設定を読み込む
+    s = st.secrets["connections"]["gsheets"]
+    creds = {k: v for k, v in s.items()}
+    
+    if "private_key" in creds:
+        # 【超強力補正】
+        # 1. 貼り付けミスでよくある「\\n」を「\n（本物の改行）」に置換
+        # 2. 前後の不要な空白や改行を徹底排除
+        # 3. 鍵の形式が崩れないように整理
+        k = creds["private_key"]
+        k = k.replace("\\n", "\n").replace("\n\n", "\n").strip()
+        creds["private_key"] = k
+    
+    # URLとtypeを認証情報から除外（エラー防止）
+    target_url = creds.pop("spreadsheet", None)
+    creds.pop("type", None)
+    
+    # 接続を実行
+    return st.connection("gsheets", type=GSheetsConnection, service_account_info=creds), target_url
+
+try:
+    conn, spreadsheet_url = get_cleaned_connection()
+except Exception as e:
+    st.error(f"接続設定に問題があります。エラー内容: {e}")
+    st.stop()
 
 GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
 
 def load_data(genre):
     try:
-        # worksheet名だけ指定して読み込み
-        return conn.read(worksheet=genre)
-    except Exception as e:
-        # データがない、あるいは接続エラー時の初期表示
+        return conn.read(spreadsheet=spreadsheet_url, worksheet=genre)
+    except:
         return pd.DataFrame({
-            "進捗": [False], "優先度": ["中"], "プロジェクト": ["新規"],
+            "進捗": [False], "優先度": ["中"], "プロジェクト": ["新規入力"],
             "タスク": ["内容を入力"], "期日": [str(date.today())], "関連リンク": [""], "備考": [""]
         })
 
-# --- メイン画面表示 ---
+# --- メイン画面表示（ここからは変更なし） ---
 tabs = st.tabs(GENRES)
-
 for i, genre in enumerate(GENRES):
     with tabs[i]:
         df = load_data(genre)
         today = date.today()
-
         df['期日'] = pd.to_datetime(df['期日']).dt.date
         df['関連リンク'] = df['関連リンク'].fillna("").astype(str)
         df['残り日数'] = df['期日'].apply(lambda x: (x - today).days if pd.notna(x) else 0)
@@ -50,15 +70,12 @@ for i, genre in enumerate(GENRES):
                 "残り日数": st.column_config.NumberColumn("残り(日)", disabled=True),
                 "関連リンク": st.column_config.LinkColumn("URL"),
             },
-            num_rows="dynamic",
-            key=f"editor_{genre}",
-            use_container_width=True
+            num_rows="dynamic", key=f"editor_{genre}", use_container_width=True
         )
 
         if st.button(f"💾 {genre} を保存", key=f"save_{genre}"):
             save_df = edited_df.drop(columns=["残り日数"])
             save_df['期日'] = save_df['期日'].astype(str)
-            # 保存を実行
-            conn.update(worksheet=genre, data=save_df)
-            st.success(f"{genre} のデータを更新しました！")
+            conn.update(spreadsheet=spreadsheet_url, worksheet=genre, data=save_df)
+            st.success("保存完了！")
             st.rerun()
