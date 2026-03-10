@@ -24,7 +24,8 @@ def get_connection():
 try:
     conn = get_connection()
 except Exception as e:
-    st.error("接続設定に問題があります。Secretsを確認してください。")
+    st.error(f"接続設定に問題があります。エラー内容: {e}")
+    st.exception(e) # これで詳細な裏側の動きが表示されます
     st.stop()
 
 GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
@@ -76,3 +77,4 @@ for i, genre in enumerate(GENRES):
             conn.update(worksheet=genre, data=save_df)
             st.success("保存しました！")
             st.rerun()
+
