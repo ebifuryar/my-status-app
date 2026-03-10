@@ -29,10 +29,16 @@ SPREADSHEET_ID = "1xS3x9SO5Ev7KZOu-UU6RRx5OGldDWbI_rmcAQjXAHCY"
 
 # --- 接続処理（直通版） ---
 @st.cache_resource
+# --- 接続処理（お掃除機能強化版） ---
+@st.cache_resource
 def get_gspread_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    # 秘密鍵の改行を補正
-    info["private_key"] = info["private_key"].replace("\\n", "\n")
+    
+    # 秘密鍵の前後にある目に見えないゴミ（BOMやスペース）を削除し、改行を補正
+    cleaned_key = info["private_key"].strip().lstrip('\ufeff')
+    cleaned_key = cleaned_key.replace("\\n", "\n")
+    info["private_key"] = cleaned_key
+    
     creds = Credentials.from_service_account_info(info, scopes=scopes)
     return gspread.authorize(creds)
 
@@ -91,3 +97,4 @@ for i, genre in enumerate(GENRES):
                 worksheet.update([save_df.columns.values.tolist()] + save_df.values.tolist())
                 st.success("保存完了！")
                 st.rerun()
+
