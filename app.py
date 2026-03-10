@@ -7,17 +7,22 @@ from datetime import date
 st.set_page_config(page_title="現状確認ダッシュボード", layout="wide")
 st.title("📌 現状確認ダッシュボード")
 
-GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
+# --- 秘密鍵を自動的に綺麗にする処理 ---
+# Secretsから情報を読み取り、貼り付けミスを修正する
+creds_dict = dict(st.secrets["connections"]["gsheets"])
+if "private_key" in creds_dict:
+    # \\n を本物の改行に直し、前後の空白を削除
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n").strip()
 
-# --- スプレッドシートへの接続設定 ---
-conn = st.connection("gsheets", type=GSheetsConnection)
+# 修正した情報を使って接続
+conn = st.connection("gsheets", type=GSheetsConnection, **creds_dict)
+
+GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
 
 def load_data(genre):
     try:
-        # 指定したワークシートを読み込む
         return conn.read(worksheet=genre)
     except:
-        # シートが空、または読み込めない場合の初期データ
         return pd.DataFrame({
             "進捗": [False], "優先度": ["中"], "プロジェクト": ["新規"],
             "タスク": ["新規内容"], "期日": [str(date.today())], "関連リンク": [""], "備考": [""]
@@ -31,20 +36,15 @@ for i, genre in enumerate(GENRES):
         df = load_data(genre)
         today = date.today()
 
-        # データ型を整える（エラー防止）
         df['期日'] = pd.to_datetime(df['期日']).dt.date
         df['関連リンク'] = df['関連リンク'].fillna("").astype(str)
-
-        # 残り日数の計算
         df['残り日数'] = df['期日'].apply(lambda x: (x - today).days if pd.notna(x) else 0)
         
-        # 進捗率
         done_count = df["進捗"].sum()
         total_count = len(df)
         progress = done_count / total_count if total_count > 0 else 0
         st.progress(progress, text=f"達成率: {int(progress * 100)}%")
 
-        # データエディタ
         edited_df = st.data_editor(
             df,
             column_config={
@@ -59,10 +59,8 @@ for i, genre in enumerate(GENRES):
             use_container_width=True
         )
 
-        # 保存ボタン
         if st.button(f"💾 {genre} を保存", key=f"save_{genre}"):
             save_df = edited_df.drop(columns=["残り日数"])
-            # 日付を文字列に直して保存（スプレッドシート用）
             save_df['期日'] = save_df['期日'].astype(str)
             conn.update(worksheet=genre, data=save_df)
             st.success("スプレッドシートに保存しました！")
