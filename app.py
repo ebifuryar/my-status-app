@@ -7,48 +7,24 @@ from datetime import date
 st.set_page_config(page_title="現状確認ダッシュボード", layout="wide")
 st.title("📌 現状確認ダッシュボード")
 
-# --- 接続処理（全てのTypeErrorを回避する最終安定版） ---
-def get_connection():
-    # Secretsから設定を取得
-    s = st.secrets["connections"]["gsheets"]
-    creds = {k: v for k, v in s.items()}
-    
-    # 1. スプレッドシートのURLは接続（認証）には使わないので取り出す
-    target_url = creds.pop("spreadsheet", None)
-    
-    # 2. 秘密鍵の汚れ（改行コードの文字列など）を掃除
-    if "private_key" in creds:
-        creds["private_key"] = creds["private_key"].replace("\\n", "\n").strip()
-    
-    # 3. 【最重要】情報をバラバラに渡さず、service_account_infoとしてまとめて渡す
-    # これにより 'unexpected keyword argument' エラーをすべて防ぎます
-    return st.connection(
-        "gsheets", 
-        type=GSheetsConnection, 
-        service_account_info=creds, 
-        spreadsheet=target_url
-    )
-
-try:
-    conn = get_connection()
-except Exception as e:
-    st.error(f"接続設定に問題があります。エラー内容: {e}")
-    st.exception(e)
-    st.stop()
+# 【重要】余計な引数を一切渡さず、Streamlitの自動読み込み機能に任せる
+# Secretsの [connections.gsheets] という項目を勝手に見つけてくれます
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 GENRES = ["ベネッセ", "体育局", "福田ゼミ", "趣味"]
 
 def load_data(genre):
     try:
-        # 接続時に指定したURLとワークシート名で読み込み
+        # worksheet名だけ指定して読み込み
         return conn.read(worksheet=genre)
-    except:
+    except Exception as e:
+        # データがない、あるいは接続エラー時の初期表示
         return pd.DataFrame({
             "進捗": [False], "優先度": ["中"], "プロジェクト": ["新規"],
             "タスク": ["内容を入力"], "期日": [str(date.today())], "関連リンク": [""], "備考": [""]
         })
 
-# --- メイン画面表示（ここからは前回と同じです） ---
+# --- メイン画面表示 ---
 tabs = st.tabs(GENRES)
 
 for i, genre in enumerate(GENRES):
@@ -82,6 +58,7 @@ for i, genre in enumerate(GENRES):
         if st.button(f"💾 {genre} を保存", key=f"save_{genre}"):
             save_df = edited_df.drop(columns=["残り日数"])
             save_df['期日'] = save_df['期日'].astype(str)
+            # 保存を実行
             conn.update(worksheet=genre, data=save_df)
             st.success(f"{genre} のデータを更新しました！")
             st.rerun()
